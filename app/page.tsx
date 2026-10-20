@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 // import ThemeToggle from "@/components/ThemeToggle";
 import Footer from "@/components/Footer";
+import Script from "next/script";
 import Navbar from "@/components/Navbar";
 
 const features = [
@@ -97,7 +98,7 @@ export default function Home() {
       {/* Demo */}
       <section id="demo" className="mx-auto max-w-md px-6 py-20 text-center">
         <h2 className="text-3xl font-bold tracking-tight">Try the chatbot</h2>
-        <p className="mt-2 text-sm text-muted">The live widget replaces this later.</p>
+        <p className="mt-2 text-sm text-muted">Click the chat bubble in the bottom-right corner to try it.</p>
         <div className="mt-8 space-y-3 rounded-2xl border border-line bg-card p-5 text-left">
           <Bubble>Hi! What's your name?</Bubble>
           <Bubble me>Ada</Bubble>
@@ -108,6 +109,7 @@ export default function Home() {
         </div>
       </section>
       <Footer />
+      <Script src="/widget.js" data-form="YOUR_DEMO_SLUG" strategy="lazyOnload" />
     </main>
   );
 }
