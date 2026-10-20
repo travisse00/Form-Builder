@@ -96,20 +96,20 @@ export default function Home() {
       </section>
 
       {/* Demo */}
-      <section id="demo" className="mx-auto max-w-md px-6 py-20 text-center">
-        <h2 className="text-3xl font-bold tracking-tight">Try the chatbot</h2>
-        <p className="mt-2 text-sm text-muted">Click the chat bubble in the bottom-right corner to try it.</p>
-        <div className="mt-8 space-y-3 rounded-2xl border border-line bg-card p-5 text-left">
-          <Bubble>Hi! What's your name?</Bubble>
-          <Bubble me>Ada</Bubble>
-          <p className="flex w-fit items-center gap-2 rounded-2xl bg-fg/10 px-4 py-2.5 text-sm text-fg">
-            <CheckCircle2 size={16} className="text-accent" />
-            Nice to meet you, Ada
-          </p>
-        </div>
-      </section>
+      {/* Demo */}
+<section id="demo" className="mx-auto max-w-md px-6 py-20 text-center">
+  <h2 className="text-3xl font-bold tracking-tight">Try the chatbot</h2>
+  <p className="mt-2 text-sm text-muted">
+    This is a real form. Answer it and the response is saved.
+  </p>
+  <iframe
+    src="/embed/99f7wuua"
+    title="Live chatbot demo"
+    className="mt-8 h-[520px] w-full rounded-2xl border border-line"
+  />
+</section>
       <Footer />
-      <Script src="/widget.js" data-form="YOUR_DEMO_SLUG" strategy="lazyOnload" />
+      <Script src="/widget.js" data-form="99f7wuua" strategy="lazyOnload" />
     </main>
   );
 }
