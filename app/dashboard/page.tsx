@@ -51,19 +51,23 @@ export default function DashboardPage() {
   }, [router]);
 
   async function createForm() {
-    const supabase = createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return;
+  const supabase = createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return;
 
-    const { data, error } = await supabase
-  .from("forms")
-  .select("id, title, slug, is_published, created_at, submissions(count)")
-  .eq("owner_id", auth.user.id)
-  .order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("forms")
+    .insert({ title: "Untitled form", slug: randomSlug(), owner_id: auth.user.id })
+    .select("id")
+    .single();
 
-    if (error) setError(error.message);
-    else router.push(`/dashboard/forms/${data.id}`);
+  if (error || !data) {
+    setError(error?.message ?? "Couldn't create the form.");
+    return;
   }
+
+  router.push(`/dashboard/forms/${data.id}`);
+}
 
   async function togglePublish(form: Form) {
     const supabase = createClient();
@@ -139,7 +143,7 @@ export default function DashboardPage() {
 
         {!loading && forms.length === 0 && (
           <div className="rounded-2xl border border-dashed border-line p-10 text-center text-muted">
-            No forms yet. Click 'New form' to create your first one.
+            No forms yet. Click "New form" to create your first one.
           </div>
         )}
 
