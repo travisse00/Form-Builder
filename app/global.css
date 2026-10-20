@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-jakarta);
+}
+
+body {
+  background: #09090f;
+  color: #e8e8f0;
+}
