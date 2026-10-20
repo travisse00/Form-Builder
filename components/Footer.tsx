@@ -6,7 +6,7 @@ export default function Footer() {
         <div className="flex gap-6">
           <a href="#features" className="hover:text-fg">Features</a>
           <a href="#how" className="hover:text-fg">How it works</a>
-          <a href="mailto:hello@example.com" className="hover:text-fg">Contact</a>
+          <a href="mailto:olaoluwalawal@gmail.com" className="hover:text-fg">Contact</a>
         </div>
       </div>
     </footer>

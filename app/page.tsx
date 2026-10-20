@@ -95,8 +95,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Demo */}
-      {/* Demo */}
+      
 <section id="demo" className="mx-auto max-w-md px-6 py-20 text-center">
   <h2 className="text-3xl font-bold tracking-tight">Try the chatbot</h2>
   <p className="mt-2 text-sm text-muted">

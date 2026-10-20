@@ -2,7 +2,7 @@
 
 Build chat-style forms, embed a chatbot widget on any website and manage responses from one dashboard.
 
-**Live demo:** https://form-builder-4w33.vercel.app/f/99f7wuua
+**Live demo:** https://form-builder-4w33.vercel.app/
 
 ## Features
 
