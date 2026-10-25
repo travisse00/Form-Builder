@@ -101,14 +101,11 @@ export default function Home() {
   <p className="mt-2 text-sm text-muted">
     This is a real form. Answer it and the response is saved.
   </p>
-  <iframe
-    src="/embed/cbis5ed2"
-    title="Live chatbot demo"
-    className="mt-8 h-[520px] w-full rounded-2xl border border-line"
-  />
+  <div id="formchat-inline" className="mt-8"></div>
 </section>
       <Footer />
       <Script src="/widget.js" data-form="cbis5ed2" strategy="lazyOnload" />
+      <Script src="http://localhost:3000/widget.js" data-form="cbis5ed2" data-mode="inline" data-target="#formchat-inline" data-height="600" defer />
     </main>
   );
 }
