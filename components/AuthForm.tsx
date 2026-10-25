@@ -72,10 +72,10 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
             <input
               className={`${input} pr-12`}
               type={showPassword ? "text" : "password"}
-              placeholder="Password (min 6 characters)"
+              placeholder="Password (min 8 characters)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
+              minLength={8}
               required
             />
             <button

@@ -1,49 +1,100 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-// import { Suspense } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ArrowUp, ArrowDown, Plus, Trash2, Save, Copy, Eye, EyeOff, MessageSquare } from "lucide-react";
+import {
+  ArrowLeft, Pencil, MessageSquare, BarChart3, Eye, EyeOff,
+  Copy, Check, ExternalLink, GitBranch, Webhook,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
+import type { Condition, QType } from "@/lib/formLogic";
 
-type QType = "text" | "email" | "multiple_choice" | "yes_no";
-type Q = { id: string; type: QType; label: string; optionsText: string; required: boolean };
+type FormRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  slug: string;
+  is_published: boolean;
+  welcome_message: string | null;
+  completion_message: string | null;
+  primary_color: string | null;
+  avatar_url: string | null;
+  widget_position: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+type QRow = { id: string; type: QType; label: string; required: boolean; condition: Condition | null };
+type Answer = { question_id: string; label: string; type?: QType; answer: string | null };
+type Sub = { id: string; answers: Answer[]; created_at: string };
 
 const TYPE_LABELS: Record<QType, string> = {
   text: "Short text",
   email: "Email",
   multiple_choice: "Multiple choice",
+  dropdown: "Dropdown",
   yes_no: "Yes / No",
+  rating: "Rating",
+  date: "Date",
+  file_upload: "File upload",
 };
 
-const field =
-  "w-full rounded-lg bg-fg/5 px-4 py-3 text-sm outline-none placeholder:text-muted focus:bg-fg/10 focus:ring-2 focus:ring-violet-500/40";
+const fileName = (path: string) => (path.split("/").pop() ?? path).replace(/^[0-9a-f-]{36}-/, "");
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
-function parseOptions(text: string) {
-  return text.split("\n").map((o) => o.trim()).filter(Boolean);
+function previewText(s: Sub) {
+  const parts = (s.answers ?? [])
+    .filter((a) => a.answer)
+    .slice(0, 2)
+    .map((a) => (a.type === "file_upload" ? fileName(a.answer!) : a.answer!));
+  return parts.length ? parts.join(" · ") : "No answers";
 }
 
-export default function FormBuilderPage() {
-  const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
+function CopyRow({ label, text }: { label: string; text: string }) {
+  const [copied, setCopied] = useState(false);
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {}
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">{label}</p>
+        <button onClick={copy} className="flex shrink-0 items-center gap-2 text-sm text-accent hover:underline">
+          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="scroll-soft mt-2 overflow-x-auto rounded-lg bg-fg/5 p-3 text-xs">{text}</pre>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-card p-5">
+      <p className="text-sm text-muted">{label}</p>
+      <p className="mt-1 text-3xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+export default function FormOverviewPage() {
+  const router = useRouter();
+  const id = useParams().id as string;
+
+  const [form, setForm] = useState<FormRow | null>(null);
+  const [questions, setQuestions] = useState<QRow[]>([]);
+  const [recent, setRecent] = useState<Sub[]>([]);
+  const [counts, setCounts] = useState({ views: 0, starts: 0, responses: 0 });
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [welcome, setWelcome] = useState("");
-  const [completion, setCompletion] = useState("");
-  const [color, setColor] = useState("#8b5cf6");
-  const [slug, setSlug] = useState("");
-  const [published, setPublished] = useState(false);
-  const [questions, setQuestions] = useState<Q[]>([]);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const savedIds = useRef<string[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -54,184 +105,63 @@ export default function FormBuilderPage() {
         return;
       }
 
-      const { data: form } = await supabase
+      const { data: f } = await supabase
         .from("forms")
         .select("*")
         .eq("id", id)
         .eq("owner_id", auth.user.id)
         .maybeSingle();
 
-      if (!form) {
+      if (!f) {
         setNotFound(true);
         setLoading(false);
         return;
       }
 
-      setTitle(form.title);
-      setDescription(form.description ?? "");
-      setWelcome(form.welcome_message ?? "");
-      setCompletion(form.completion_message ?? "");
-      setColor(form.primary_color ?? "#8b5cf6");
-      setSlug(form.slug);
-      setPublished(form.is_published);
+      const count = (table: string, type?: string) => {
+        let q = supabase.from(table).select("id", { count: "exact", head: true }).eq("form_id", id);
+        if (type) q = q.eq("event_type", type);
+        return q;
+      };
 
-      const { data: qs } = await supabase
-        .from("questions")
-        .select("*")
-        .eq("form_id", id)
-        .order("position");
+      const [qs, subs, views, starts, responses] = await Promise.all([
+        supabase.from("questions").select("id, type, label, required, condition").eq("form_id", id).order("position"),
+        supabase.from("submissions").select("id, answers, created_at").eq("form_id", id).order("created_at", { ascending: false }).limit(5),
+        count("form_events", "view"),
+        count("form_events", "start"),
+        count("submissions"),
+      ]);
 
-      const loaded: Q[] = (qs ?? []).map((q) => ({
-        id: q.id,
-        type: q.type,
-        label: q.label,
-        optionsText: Array.isArray(q.options) ? q.options.join("\n") : "",
-        required: q.required ?? false,
-      }));
-      setQuestions(loaded);
-      savedIds.current = loaded.map((q) => q.id);
+      setForm(f as FormRow);
+      setQuestions((qs.data ?? []) as QRow[]);
+      setRecent((subs.data ?? []) as Sub[]);
+      setCounts({
+        views: views.count ?? 0,
+        starts: starts.count ?? 0,
+        responses: responses.count ?? 0,
+      });
       setLoading(false);
     }
     load();
   }, [id, router]);
 
-  function addQuestion(type: QType) {
-    setQuestions((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        type,
-        label: "",
-        optionsText: type === "multiple_choice" ? "Option 1\nOption 2" : "",
-        required: false,
-      },
-    ]);
-  }
-
-  function updateQuestion(qid: string, patch: Partial<Q>) {
-    setQuestions((prev) => prev.map((q) => (q.id === qid ? { ...q, ...patch } : q)));
-  }
-
-  function removeQuestion(qid: string) {
-    setQuestions((prev) => prev.filter((q) => q.id !== qid));
-  }
-
-  function move(index: number, dir: -1 | 1) {
-    setQuestions((prev) => {
-      const target = index + dir;
-      if (target < 0 || target >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  async function save(): Promise<boolean> {
-    setError("");
-    setMessage("");
-
-    if (!title.trim()) {
-      setError("Give your form a title.");
-      return false;
-    }
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
-      if (!q.label.trim()) {
-        setError(`Question ${i + 1} needs some text.`);
-        return false;
-      }
-      if (q.type === "multiple_choice" && parseOptions(q.optionsText).length < 2) {
-        setError(`Question ${i + 1} needs at least 2 options.`);
-        return false;
-      }
-    }
-
-    setSaving(true);
-    const supabase = createClient();
-
-    const { error: formError } = await supabase
-      .from("forms")
-      .update({
-        title: title.trim(),
-        description: description.trim() || null,
-        welcome_message: welcome,
-        completion_message: completion,
-        primary_color: color,
-      })
-      .eq("id", id);
-
-    if (formError) {
-      setError(formError.message);
-      setSaving(false);
-      return false;
-    }
-
-    const removed = savedIds.current.filter((sid) => !questions.some((q) => q.id === sid));
-    if (removed.length > 0) {
-      const { error: delError } = await supabase.from("questions").delete().in("id", removed);
-      if (delError) {
-        setError(delError.message);
-        setSaving(false);
-        return false;
-      }
-    }
-
-    if (questions.length > 0) {
-      const rows = questions.map((q, i) => ({
-        id: q.id,
-        form_id: id,
-        type: q.type,
-        label: q.label.trim(),
-        options: q.type === "multiple_choice" ? parseOptions(q.optionsText) : null,
-        required: q.required,
-        position: i,
-      }));
-      const { error: qError } = await supabase.from("questions").upsert(rows);
-      if (qError) {
-        setError(qError.message);
-        setSaving(false);
-        return false;
-      }
-    }
-
-    savedIds.current = questions.map((q) => q.id);
-    setSaving(false);
-    setMessage("Saved");
-    return true;
-  }
-
   async function togglePublish() {
-    if (!published && questions.length === 0) {
-      setError("Add at least one question before publishing.");
-      return;
+    if (!form) return;
+    setError("");
+    if (!form.is_published && questions.length === 0) {
+      return setError("Add at least one question before publishing.");
     }
-    if (!(await save())) return;
-
     const supabase = createClient();
     const { error } = await supabase
       .from("forms")
-      .update({ is_published: !published })
+      .update({ is_published: !form.is_published })
       .eq("id", id);
-
     if (error) return setError(error.message);
-    setPublished(!published);
-    setMessage(published ? "Unpublished" : "Published");
+    setForm({ ...form, is_published: !form.is_published });
   }
-
-  async function copyLink() {
-    await navigator.clipboard.writeText(`${window.location.origin}/f/${slug}`);
-    setMessage("Link copied");
-  }
-
-  const embedCode = `<script src="${typeof window !== "undefined" ? window.location.origin : ""}/widget.js" data-form="${slug}" defer></script>`;
-
-async function copyEmbed() {
-  await navigator.clipboard.writeText(embedCode);
-  setMessage("Embed code copied");
-}
 
   if (loading) return <p className="p-10 text-muted">Loading...</p>;
-  if (notFound)
+  if (notFound || !form)
     return (
       <main className="p-10">
         <p className="text-muted">Form not found.</p>
@@ -241,193 +171,201 @@ async function copyEmbed() {
       </main>
     );
 
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const publicLink = `${origin}/f/${form.slug}`;
+  const floatingCode = `<script src="${origin}/widget.js" data-form="${form.slug}" defer></script>`;
+  const inlineCode = `<div id="formchat-inline"></div>
+<script src="${origin}/widget.js" data-form="${form.slug}" data-mode="inline" data-target="#formchat-inline" data-height="600" defer></script>`;
+
+  const denom = Math.max(counts.starts, counts.responses);
+  const completion = denom ? `${Math.round((counts.responses / denom) * 100)}%` : "-";
+  const color = form.primary_color || "#8b5cf6";
+
+  const links = [
+    { href: `/dashboard/forms/${id}/edit`, icon: Pencil, title: "Edit form", text: "Questions, rules and appearance" },
+    { href: `/dashboard/forms/${id}/responses`, icon: MessageSquare, title: "Responses", text: `${counts.responses} received` },
+    { href: `/dashboard/forms/${id}/analytics`, icon: BarChart3, title: "Analytics", text: "Charts, rates and export" },
+    { href: `/dashboard/forms/${id}/integrations`, icon: Webhook, title: "Integrations", text: "Email alerts and webhooks" },
+  ];
+
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-      {/* Top bar */}
+    <main className="mx-auto max-w-5xl px-6 py-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
-  <Link href="/dashboard" className="flex items-center gap-2 text-sm text-muted hover:text-fg">
-    <ArrowLeft size={16} /> Dashboard
-  </Link>
-
-  <div className="flex flex-wrap items-center gap-2 text-sm">
-    <ThemeToggle />
-    <Link
-      href={`/dashboard/forms/${id}/responses`}
-      className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 hover:bg-fg/5 sm:px-4"
-    >
-      <MessageSquare size={16} /> Responses
-    </Link>
-    <button
-      onClick={save}
-      disabled={saving}
-      className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 hover:bg-fg/5 disabled:opacity-50 sm:px-4"
-    >
-      <Save size={16} /> {saving ? "Saving..." : "Save"}
-    </button>
-    <button
-      onClick={togglePublish}
-      className="flex items-center gap-2 rounded-lg bg-violet-500 px-3 py-2 font-semibold text-white hover:bg-violet-600 sm:px-4"
-    >
-      {published ? <EyeOff size={16} /> : <Eye size={16} />}
-      {published ? "Unpublish" : "Publish"}
-    </button>
-  </div>
-</header>
-
-      {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-      {message && !error && <p className="mt-4 text-sm text-emerald-600 dark:text-emerald-400">{message}</p>}
-
-      {published && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-line bg-card px-5 py-3 text-sm">
-          <span className="truncate text-muted">Public link: /f/{slug}</span>
-          <button onClick={copyLink} className="flex shrink-0 items-center gap-2 text-accent hover:underline">
-            <Copy size={14} /> Copy
+        <Link href="/dashboard" className="flex items-center gap-2 text-sm text-muted hover:text-fg">
+          <ArrowLeft size={16} /> Dashboard
+        </Link>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <ThemeToggle />
+          <Link href={`/dashboard/forms/${id}/edit`} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 hover:bg-fg/5 sm:px-4">
+            <Pencil size={16} /> Edit
+          </Link>
+          <button
+            onClick={togglePublish}
+            className="flex items-center gap-2 rounded-lg bg-violet-500 px-3 py-2 font-semibold text-white hover:bg-violet-600 sm:px-4"
+          >
+            {form.is_published ? <EyeOff size={16} /> : <Eye size={16} />}
+            {form.is_published ? "Unpublish" : "Publish"}
           </button>
         </div>
-      )}
+      </header>
 
-      {published && (
-  <div className="mt-3 rounded-2xl border border-line bg-card p-5 text-sm">
-    <p className="font-semibold">Embed on your website</p>
-    <p className="mt-1 text-muted">Paste this just before the closing &lt;/body&gt; tag.</p>
-    <pre className="mt-3 overflow-x-auto rounded-lg bg-fg/5 p-3 text-xs">{embedCode}</pre>
-    <button onClick={copyEmbed} className="mt-3 flex items-center gap-2 text-accent hover:underline">
-      <Copy size={14} /> Copy snippet
-    </button>
-  </div>
-)}
-
-      <div className="mt-6 grid gap-8 lg:grid-cols-2">
-        {/* Editor */}
-        <div className="space-y-6">
-          <section className="space-y-4 rounded-2xl border border-line bg-card p-5">
-            <h2 className="font-semibold">Form details</h2>
-            <input className={field} placeholder="Form title" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <textarea className={field} rows={2} placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
-            <input className={field} placeholder="Welcome message" value={welcome} onChange={(e) => setWelcome(e.target.value)} />
-            <input className={field} placeholder="Completion message" value={completion} onChange={(e) => setCompletion(e.target.value)} />
-            <label className="flex items-center justify-between text-sm text-muted">
-              Chat colour
-              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-14 cursor-pointer rounded bg-transparent" />
-            </label>
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="font-semibold">Questions</h2>
-
-            {questions.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-line p-8 text-center text-sm text-muted">
-                No questions yet. Add one below.
-              </div>
-            )}
-
-            {questions.map((q, i) => (
-              <div key={q.id} className="rounded-2xl border border-line bg-card p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-accent">
-                    {i + 1}. {TYPE_LABELS[q.type]}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" className="rounded-lg p-2 text-muted hover:bg-fg/5 disabled:opacity-30">
-                      <ArrowUp size={16} />
-                    </button>
-                    <button onClick={() => move(i, 1)} disabled={i === questions.length - 1} aria-label="Move down" className="rounded-lg p-2 text-muted hover:bg-fg/5 disabled:opacity-30">
-                      <ArrowDown size={16} />
-                    </button>
-                    <button onClick={() => removeQuestion(q.id)} aria-label="Delete question" className="rounded-lg p-2 text-red-500 hover:bg-red-500/10">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <input
-                  className={`${field} mt-3`}
-                  placeholder="Type your question"
-                  value={q.label}
-                  onChange={(e) => updateQuestion(q.id, { label: e.target.value })}
-                />
-
-                {q.type === "multiple_choice" && (
-                  <textarea
-                    className={`${field} mt-3`}
-                    rows={4}
-                    placeholder="One option per line"
-                    value={q.optionsText}
-                    onChange={(e) => updateQuestion(q.id, { optionsText: e.target.value })}
-                  />
-                )}
-
-                <label className="mt-3 flex items-center gap-2 text-sm text-muted">
-                  <input
-                    type="checkbox"
-                    checked={q.required}
-                    onChange={(e) => updateQuestion(q.id, { required: e.target.checked })}
-                    className="h-4 w-4 accent-violet-500"
-                  />
-                  Required
-                </label>
-              </div>
-            ))}
-
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(TYPE_LABELS) as QType[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => addQuestion(t)}
-                  className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-fg/5"
-                >
-                  <Plus size={14} /> {TYPE_LABELS[t]}
-                </button>
-              ))}
-            </div>
-          </section>
+      {/* Title */}
+      <div className="mt-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold">{form.title}</h1>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              form.is_published
+                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                : "bg-fg/10 text-muted"
+            }`}
+          >
+            {form.is_published ? "Published" : "Draft"}
+          </span>
         </div>
-
-        {/* Preview */}
-        <div className="lg:sticky lg:top-6 lg:self-start">
-          <h2 className="mb-3 font-semibold">Preview</h2>
-          <div className="overflow-hidden rounded-2xl border border-line bg-card">
-            <div className="px-5 py-4 font-semibold text-white" style={{ backgroundColor: color }}>
-              {title || "Untitled form"}
-            </div>
-
-            <div className="max-h-[560px] space-y-4 overflow-y-auto p-5">
-              {welcome && <p className="w-fit max-w-[85%] rounded-2xl bg-fg/10 px-4 py-2.5 text-sm">{welcome}</p>}
-
-              {questions.map((q) => (
-                <div key={q.id} className="space-y-2">
-                  <p className="w-fit max-w-[85%] rounded-2xl bg-fg/10 px-4 py-2.5 text-sm">
-                    {q.label || "Your question appears here"}
-                    {q.required && " *"}
-                  </p>
-
-                  {(q.type === "text" || q.type === "email") && (
-                    <div className="ml-auto w-fit rounded-full bg-fg/5 px-4 py-2 text-sm text-muted">
-                      {q.type === "email" ? "name@email.com" : "Type your answer..."}
-                    </div>
-                  )}
-
-                  {(q.type === "yes_no" || q.type === "multiple_choice") && (
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {(q.type === "yes_no" ? ["Yes", "No"] : parseOptions(q.optionsText)).map((o) => (
-                        <span key={o} className="rounded-full border-2 px-4 py-1.5 text-sm font-medium" style={{ borderColor: color, color }}>
-                          {o}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {completion && questions.length > 0 && (
-                <p className="w-fit max-w-[85%] rounded-2xl px-4 py-2.5 text-sm text-white" style={{ backgroundColor: color }}>
-                  {completion}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        {form.description && <p className="mt-2 text-muted">{form.description}</p>}
+        <p className="mt-2 text-sm text-muted">
+          Created {day(form.created_at)}
+          {form.updated_at && ` · Last edited ${day(form.updated_at)}`}
+        </p>
       </div>
+
+      {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
+
+      {/* Stats */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Views" value={String(counts.views)} />
+        <StatCard label="Conversation starts" value={String(counts.starts)} />
+        <StatCard label="Completed" value={String(counts.responses)} />
+        <StatCard label="Completion rate" value={completion} />
+      </div>
+
+      {/* Quick links */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {links.map(({ href, icon: Icon, title, text }) => (
+          <Link key={title} href={href} className="flex items-center gap-4 rounded-2xl border border-line bg-card p-5 transition hover:border-violet-400/60">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 text-accent">
+              <Icon size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold">{title}</p>
+              <p className="truncate text-sm text-muted">{text}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Share */}
+      <section className="mt-8 rounded-2xl border border-line bg-card p-5">
+        <h2 className="font-semibold">Share and embed</h2>
+
+        {form.is_published ? (
+          <div className="mt-4 space-y-5">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">Public link</p>
+                <a href={publicLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-accent hover:underline">
+                  <ExternalLink size={14} /> Open
+                </a>
+              </div>
+              <CopyRow label="" text={publicLink} />
+            </div>
+            <CopyRow label="Floating chat bubble (paste before the closing </body> tag)" text={floatingCode} />
+            <CopyRow label="Inline chat (paste where the chat should appear)" text={inlineCode} />
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="text-muted">Publish this form to get a public link and embed codes.</p>
+            <button onClick={togglePublish} className="rounded-lg border border-line px-3 py-2 hover:bg-fg/5">
+              Publish now
+            </button>
+          </div>
+        )}
+      </section>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        {/* Questions */}
+        <section className="rounded-2xl border border-line bg-card p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Questions ({questions.length})</h2>
+            <Link href={`/dashboard/forms/${id}/edit`} className="text-sm text-accent hover:underline">Edit</Link>
+          </div>
+
+          {questions.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">No questions yet. Edit the form to add some.</p>
+          ) : (
+            <ol className="mt-4 space-y-3">
+              {questions.map((q, i) => (
+                <li key={q.id} className="flex gap-3 text-sm">
+                  <span className="text-muted">{i + 1}.</span>
+                  <div className="min-w-0">
+                    <p className="break-words">{q.label}</p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                      {TYPE_LABELS[q.type]}
+                      {q.required && <span>· Required</span>}
+                      {q.condition && (
+                        <span className="flex items-center gap-1"><GitBranch size={12} /> Conditional</span>
+                      )}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        {/* Recent responses */}
+        <section className="rounded-2xl border border-line bg-card p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Recent responses</h2>
+            <Link href={`/dashboard/forms/${id}/responses`} className="text-sm text-accent hover:underline">View all</Link>
+          </div>
+
+          {recent.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">No responses yet.</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-line">
+              {recent.map((s) => (
+                <li key={s.id} className="py-3 first:pt-0 last:pb-0">
+                  <p className="truncate text-sm">{previewText(s)}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {new Date(s.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* Chat settings */}
+      <section className="mt-6 rounded-2xl border border-line bg-card p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Chat settings</h2>
+          <Link href={`/dashboard/forms/${id}/edit`} className="text-sm text-accent hover:underline">Change</Link>
+        </div>
+        <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Colour</dt>
+            <dd className="mt-1 flex items-center gap-2">
+              <span className="h-4 w-4 rounded-full border border-line" style={{ backgroundColor: color }} />
+              {color}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Bubble position</dt>
+            <dd className="mt-1 capitalize">{form.widget_position ?? "right"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Welcome message</dt>
+            <dd className="mt-1 break-words">{form.welcome_message || <span className="text-muted">None</span>}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Success message</dt>
+            <dd className="mt-1 break-words">{form.completion_message || <span className="text-muted">Default</span>}</dd>
+          </div>
+        </dl>
+      </section>
     </main>
   );
 }

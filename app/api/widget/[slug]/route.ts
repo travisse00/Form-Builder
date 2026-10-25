@@ -1,32 +1,37 @@
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-// export const dynamic = "force-dynamic";
-
-export async function GET( _req: Request, { params }: { params: Promise<{ slug: string }> } ) {
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ slug: string }> }
+) {
   const { slug } = await params;
- const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+  const cors = { "Access-Control-Allow-Origin": "*" };
+  const gone = () => Response.json({ error: "Not found" }, { status: 404, headers: cors });
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return gone();
 
-  const { data } = await supabase
+  const admin = createAdminClient();
+  const { data } = await admin
     .from("forms")
-    .select("title, primary_color, is_published")
+    .select("title, primary_color, avatar_url, widget_position, is_published, owner_id")
     .eq("slug", slug)
     .maybeSingle();
+  if (!data || !data.is_published) return gone();
 
-  if (!data || !data.is_published) {
-    return Response.json({ error: "Not found" }, { status: 404, headers: corsHeaders });
-  }
+  const { data: owner } = await admin
+    .from("profiles")
+    .select("is_suspended")
+    .eq("id", data.owner_id)
+    .maybeSingle();
+  if (owner?.is_suspended) return gone();
 
   return Response.json(
-    { title: data.title, color: data.primary_color },
-    { headers: corsHeaders }
+    {
+      title: data.title,
+      color: data.primary_color,
+      avatar: data.avatar_url,
+      position: data.widget_position,
+    },
+    { headers: cors }
   );
 }

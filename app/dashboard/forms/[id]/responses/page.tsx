@@ -8,17 +8,35 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
 
-type Answer = {
-  question_id: string;
-  label: string;
-  answer: string | null;
-};
+type Answer = { question_id: string; label: string; type?: string; answer: string | null };
 
 type Submission = {
   id: string;
   answers: Answer[];
   created_at: string;
 };
+
+function FileLink({ path }: { path: string }) {
+  const [busy, setBusy] = useState(false);
+
+  async function open() {
+    setBusy(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.storage
+      .from("form-uploads")
+      .createSignedUrl(path, 60);
+    setBusy(false);
+    if (error || !data) return alert("Couldn't open the file.");
+    window.open(data.signedUrl, "_blank", "noopener");
+  }
+
+  const name = path.split("/").pop()?.replace(/^[0-9a-f-]{36}-/, "") ?? path;
+  return (
+    <button onClick={open} className="text-accent hover:underline">
+      {busy ? "Opening..." : name}
+    </button>
+  );
+}
 
 export default function ResponsesPage() {
   return (
@@ -120,12 +138,9 @@ function ResponsesContent() {
     return (
       <main className="p-10">
         <p className="text-muted">Form not found.</p>
-        <Link
-          href="/dashboard"
-          className="mt-4 inline-block text-accent hover:underline"
-        >
-          Back to dashboard
-        </Link>
+        <Link href={`/dashboard/forms/${id}`} className="flex items-center gap-2 text-sm text-muted hover:text-fg">
+  <ArrowLeft size={16} /> Back
+</Link>
       </main>
     );
   }
@@ -193,16 +208,24 @@ function ResponsesContent() {
             </div>
 
             <dl className="mt-4 space-y-3">
-              {submission.answers.map((answer) => (
-                <div key={answer.question_id}>
+              {submission.answers.map((a) => (
+                <div key={a.question_id}>
                   <dt className="text-xs font-medium uppercase tracking-wide text-muted">
-                    {answer.label}
+                    {a.label}
                   </dt>
                   <dd className="mt-0.5 break-words text-sm">
-                    {answer.answer ?? (
-                      <span className="text-muted">Skipped</span>
-                    )}
-                  </dd>
+  {a.answer == null ? (
+    <span className="text-muted">Skipped</span>
+  ) : a.type === "file_upload" ? (
+    <FileLink path={a.answer} />
+  ) : a.type === "rating" ? (
+    `${a.answer} ★`
+  ) : a.type === "date" ? (
+    new Date(a.answer + "T00:00:00").toLocaleDateString(undefined, { dateStyle: "medium" })
+  ) : (
+    a.answer
+  )}
+</dd>
                 </div>
               ))}
             </dl>

@@ -102,13 +102,13 @@ export default function Home() {
     This is a real form. Answer it and the response is saved.
   </p>
   <iframe
-    src="/embed/99f7wuua"
+    src="/embed/cbis5ed2"
     title="Live chatbot demo"
     className="mt-8 h-[520px] w-full rounded-2xl border border-line"
   />
 </section>
       <Footer />
-      <Script src="/widget.js" data-form="99f7wuua" strategy="lazyOnload" />
+      <Script src="/widget.js" data-form="cbis5ed2" strategy="lazyOnload" />
     </main>
   );
 }
