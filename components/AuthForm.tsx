@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
+import Link from "next/link";
 
 export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
@@ -53,9 +54,9 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
       </div>
 
       <div className="w-full max-w-sm">
-        <a href="/" className="text-lg font-bold tracking-tight">
+        <Link href="/" className="text-lg font-bold tracking-tight">
           Form<span className="text-accent">Chat</span>
-        </a>
+        </Link>
         <h1 className="mt-6 text-2xl font-bold">
           {isSignup ? "Create your account" : "Welcome back"}
         </h1>
