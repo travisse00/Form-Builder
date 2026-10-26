@@ -13,7 +13,7 @@ import Navbar from "@/components/Navbar";
 const features = [
   { icon: ListChecks, title: "Form builder", desc: "Text, email, multiple choice and yes/no questions. Reorder, require and preview." },
   { icon: MessageSquare, title: "Chat-style forms", desc: "One question at a time, so people actually finish." },
-  { icon: Code2, title: "Embed anywhere", desc: "One script tag puts a floating widget on any website." },
+  { icon: Code2, title: "Embed anywhere", desc: "One script tag puts a floating widget on any website, or even add it inline." },
   { icon: LayoutDashboard, title: "Simple dashboard", desc: "Publish, unpublish and read every submission with timestamps." },
 ];
 

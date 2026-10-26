@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import DesignPresets from "@/components/DesignPresets";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -870,6 +871,14 @@ export default function FormBuilderPage() {
                 className="h-9 w-14 cursor-pointer rounded bg-transparent"
               />
             </label>
+            <DesignPresets
+  current={{ color, welcome, completion }}
+  onApply={(v) => {
+    setColor(v.color);
+    setWelcome(v.welcome);
+    setCompletion(v.completion);
+  }}
+/>
             <WidgetSettings formId={id} onChange={setWidget} />
           </section>
 

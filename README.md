@@ -1,207 +1,157 @@
-# FormChat
+# FormChat: Interactive Form Builder with Chatbot Widget
 
-Build chat-style forms, embed a chatbot widget on any website and manage responses from one dashboard.
+Build forms that feel like conversations, embed them on any website with one script tag, and manage everything from a dashboard.
 
-**Live demo:** https://form-builder-4w33.vercel.app/
-
-## Features
-
-- Landing page with features, how-it-works and chatbot demo
-- Email + password auth (Supabase Auth) with show/hide password
-- Dashboard with total forms, published forms and total responses
-- Create, edit, delete, publish and unpublish forms
-- Form builder with text, email, multiple choice and yes/no questions
-  - Reorder, delete, required toggle and live preview
-  - Customise chat colour, welcome message and completion message
-- Public chat-style form at `/f/<slug>` (one question at a time, validation, skip for optional questions)
-- Embeddable floating chat widget (one script tag, works on desktop and mobile)
-- Responses page with every submission and its timestamp
-- Light and dark theme
+- **Live demo:** https://form-builder-virid-pi.vercel.app/
+- **Repository:** https://github.com/travisse00/Form-Builder
+- **Test results:** 4 test files, 64 tests, all passing (see [Testing](#testing))
 
 ## Tech stack
 
-- Next.js 16 (App Router), React 19, TypeScript
-- Tailwind CSS 4
-- Supabase (PostgreSQL + Auth)
-- lucide-react icons
+| Area | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router), React 19, TypeScript |
+| Styling | Tailwind CSS v4, Lucide icons, light and dark themes |
+| Database and auth | Supabase (Postgres, Auth, Row Level Security, Storage) |
+| Email | Resend |
+| Testing | Vitest |
+| Hosting | Vercel |
+
+## Features
+
+### Form builder
+- Question types: short text, email, multiple choice, dropdown, yes/no, rating, date and file upload
+- Required fields, reordering, and per-question validation (length limits, error messages)
+- **Conditional logic:** show a question only when an earlier answer matches a rule
+- **Templates:** start from Contact, Feedback, Event registration or Job application
+- **Autosave** with draft recovery after a refresh or crash
+- **Live preview** that behaves exactly like the real widget
+- **Reusable design presets:** save a colour and chat messages, apply them to any form
+- **Duplicate** any form, with its questions and rules
+
+### Chatbot widget
+- One question at a time, with a typing indicator and progress bar
+- Floating bubble or inline mode, left or right position, custom avatar and colour
+- Custom welcome and completion messages
+- Embed with one line:
+  ```html
+  <script src="https://form-builder-virid-pi.vercel.app//widget.js" data-form="YOUR-SLUG" defer></script>
+  ```
+
+### Analytics
+- Views, conversation starts, completions and completion rate per form
+- Charts over time and CSV export
+
+### Notifications and integrations
+- **Email notification** to the form owner on every submission (Resend)
+- **Webhooks:** each submission is sent to a URL you choose, signed with an HMAC signature so the receiver can verify it came from FormChat
+- Delivery logs for both emails and webhooks, so failures are visible
+
+### Dashboard
+- Search, filter by status, and sort forms (newest, oldest, A to Z, most responses)
+- Per-form overview page with stats, share links, embed code and recent responses
+- Responses table, with signed links for uploaded files
+
+### Admin dashboard
+- Platform overview: users, forms, submissions and a 14-day activity chart
+- User management with search, suspend and reactivate, and role changes
+- Audit log of admin actions and an error log
+- Protected in three layers: route check, role check on every API call, and database rules
+
+## Security
+
+- **Row Level Security** on every table: users can only read and change their own forms, questions, responses and presets
+- Public visitors never touch the database directly. Public forms load through server routes, and the public anon key has no table access
+- **Server-side submission pipeline:** every submission is re-validated on the server, including conditional rules, so skipping the browser checks doesn't work
+- **Session tickets:** signed, expiring tickets and a minimum-time rule reject scripted submissions
+- **Rate limiting** stored in the database, so it holds across serverless instances
+- **Private file storage** with signed URLs, a 5 MB limit and owner-only reads
+- **Webhook safety:** HTTPS only, DNS check against private addresses, no redirects, timeouts
+- Security headers set in `next.config.ts`
+- Suspended accounts are blocked at both the app level and the auth level
 
 ## Getting started
 
-### 1. Clone and install
-
+### 1. Install
 ```bash
 git clone https://github.com/travisse00/Form-Builder.git
-cd my-form-generator
+cd Form-Builder
 npm install
 ```
 
-### 2. Create a Supabase project
-
-Create a free project at [supabase.com](https://supabase.com). For local testing you can switch off email confirmation under **Authentication → Sign In / Providers → Email → Confirm email** (turn it back on in production).
-
-### 3. Environment variables
-
+### 2. Environment variables
 Create `.env.local` in the project root:
 
-```
+```bash
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key
-SUPABASE_SERVICE_ROLE_KEY=your-secret-key
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server only, never expose
+RESEND_API_KEY=your-resend-key
+EMAIL_FROM="FormChat <onboarding@resend.dev>"
 ```
 
-Find these in **Project Settings → API Keys**. Never commit this file or expose the secret key in the browser.
+| Variable | Used for |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser and server Supabase client |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only routes: public forms, submissions, uploads, admin |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Submission notification emails |
 
-### 4. Create the database
+### 3. Database
+Run the SQL for the tables, policies and storage bucket in the Supabase SQL Editor. Tables:
+`profiles`, `forms`, `questions`, `submissions`, `form_events`, `webhooks`, `webhook_deliveries`, `email_deliveries`, `design_presets`, `rate_limits`, `admin_audit_log`, `error_logs`.
 
-Open the Supabase **SQL Editor** and run the following.
-
+To make yourself the first admin:
 ```sql
--- Tables
-create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  full_name text,
-  email text,
-  created_at timestamptz default now()
-);
-
-create table forms (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  title text not null,
-  description text,
-  slug text unique not null,
-  is_published boolean default false,
-  welcome_message text default 'Hi! Let''s get started.',
-  completion_message text default 'Thanks for your response!',
-  primary_color text default '#4f46e5',
-  created_at timestamptz default now()
-);
-
-create table questions (
-  id uuid primary key default gen_random_uuid(),
-  form_id uuid references forms(id) on delete cascade,
-  type text not null check (type in ('text','email','multiple_choice','yes_no')),
-  label text not null,
-  options jsonb,
-  required boolean default false,
-  position int not null
-);
-
-create table submissions (
-  id uuid primary key default gen_random_uuid(),
-  form_id uuid references forms(id) on delete cascade,
-  answers jsonb not null,
-  created_at timestamptz default now()
-);
-
--- Auto-create a profile when someone signs up
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  insert into public.profiles (id, full_name, email)
-  values (new.id, new.raw_user_meta_data->>'full_name', new.email);
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-after insert on auth.users
-for each row execute function public.handle_new_user();
-
--- Row Level Security
-alter table profiles enable row level security;
-alter table forms enable row level security;
-alter table questions enable row level security;
-alter table submissions enable row level security;
-
-create policy "owners manage own forms" on forms
-  for all to authenticated
-  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
-create policy "public read published forms" on forms
-  for select to anon, authenticated
-  using (is_published = true);
-
-create policy "owners manage questions" on questions
-  for all to authenticated
-  using (exists (select 1 from forms where forms.id = questions.form_id and forms.owner_id = auth.uid()))
-  with check (exists (select 1 from forms where forms.id = questions.form_id and forms.owner_id = auth.uid()));
-
-create policy "public read published questions" on questions
-  for select to anon, authenticated
-  using (exists (select 1 from forms where forms.id = questions.form_id and forms.is_published = true));
-
-create policy "anyone submits to published forms" on submissions
-  for insert to anon, authenticated
-  with check (exists (select 1 from forms where forms.id = submissions.form_id and forms.is_published = true));
-
-create policy "owners read submissions" on submissions
-  for select to authenticated
-  using (exists (select 1 from forms where forms.id = submissions.form_id and forms.owner_id = auth.uid()));
-
-create policy "read own profile" on profiles
-  for select to authenticated
-  using (id = auth.uid());
+update profiles set role = 'admin' where email = 'you@example.com';
 ```
 
-### 5. Run it
-
+### 4. Run
 ```bash
 npm run dev
 ```
+Open http://localhost:3000.
 
-Open [http://localhost:3000](http://localhost:3000).
+## Testing
 
-## How to use
+Tests run with Vitest. Keep `npm run dev` running in one terminal, then in another:
 
-1. Sign up and log in.
-2. Click **New form**, add questions and set your colours and messages.
-3. Click **Publish**. You get a public link (`/f/<slug>`) and an embed snippet.
-4. View answers from the dashboard via **Responses**.
-
-## Embedding the chatbot widget
-
-Paste this before the closing `</body>` tag of any website:
-
-```html
-<script src="https://your-domain.com/widget.js" data-form="YOUR_FORM_SLUG" defer></script>
+```bash
+npm test
 ```
 
-- `src` points to the deployed app's `widget.js`.
-- `data-form` is the form's slug (the last part of its public link).
-- The widget only appears while the form is published.
+| File | What it proves |
+|---|---|
+| `tests/formLogic.test.ts` | Conditional logic and answer validation |
+| `tests/spam.test.ts` | Session tickets and the too-fast rule |
+| `tests/api.test.ts` | Server validation, rate limiting and closed admin routes |
+| `tests/security.test.ts` | Users cannot read another user's forms or responses, strangers with only the public key can do nothing, and owners can reach their own data and files |
 
-The script adds a floating button that opens the form in an iframe. It goes full screen on small phones.
+**Latest result:**
+```
+Test Files  4 passed (4)
+     Tests  64 passed (64)
+```
+
+The security tests found real gaps in the database policies during development (public read access on forms and questions, and open analytics and storage writes). Those were fixed and are now covered by tests.
+
+## Deployment
+
+Deployed on Vercel. Add the five environment variables above in **Project Settings, Environment Variables**, then redeploy.
 
 ## Project structure
 
 ```
 app/
-  page.tsx                          Landing page
-  login/ signup/                    Auth pages
-  dashboard/page.tsx                Form list and stats
-  dashboard/forms/[id]/page.tsx     Form builder
-  dashboard/forms/[id]/responses/   Submissions
-  f/[slug]/page.tsx                 Public chat form
-  embed/[slug]/page.tsx             Chat form used inside the widget iframe
-  api/widget/[slug]/route.ts        Widget config endpoint (public)
-components/
-  AuthForm.tsx  ChatForm.tsx  ThemeToggle.tsx
-lib/supabase/client.ts              Supabase browser client
-public/widget.js                    Embeddable widget script
-proxy.ts                            Route protection for /dashboard, /login, /signup
+  dashboard/        owner dashboard, form overview, builder, responses, analytics, integrations
+  admin/            admin dashboard
+  api/              submit, session, event, upload, public-form, widget, integrations, admin
+components/         ChatForm, QuestionSettings, TemplatePicker, WidgetSettings, DesignPresets
+lib/                formLogic, notify, ratelimit, spam, admin, audit, supabase clients
+public/widget.js    the embeddable widget script
+tests/              Vitest suites
+proxy.ts            auth, suspended-account and admin route gating
 ```
 
-## Deployment (Vercel)
-
-1. Push the repo to GitHub and import it in Vercel.
-2. Add the three environment variables from step 3.
-3. Deploy, then in Supabase go to **Authentication → URL Configuration** and set the **Site URL** to your Vercel URL.
-4. Use your Vercel URL in the embed snippet's `src`.
-
-## Scope notes
-
-AI features, payments, subscriptions and advanced integrations are intentionally out of scope for this MVP.
+## Known limitations
+- Design presets store colour and chat messages. The avatar and bubble position are set per form.
+- Email sending in test mode only delivers to the Resend account owner until a sending domain is verified.
